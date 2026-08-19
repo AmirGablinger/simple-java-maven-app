@@ -1,0 +1,29 @@
+name: my first workflow it will change the version in the pom.xml to the build number
+
+on:
+  workflow_dispatch: # allows manual triggering for checking it without merging
+  #push: not yet i want to check if it will work before i merge it
+
+jobs:
+  build:
+    name: version control part
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Output Run Information
+        run: |
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Run Attempt: ${{ github.run_attempt }}"
+
+      - name: Update pom.xml version
+        run: mvn versions:set -DnewVersion=${{ github.run_number }}
