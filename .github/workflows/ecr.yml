@@ -61,4 +61,5 @@ jobs:
       # verify app is running with a health check
       - name: Verify application status
         run: |
-          docker logs java-app | grep "Hello World!"
+          sleep 2
+          docker logs java-app 2>&1 | grep -i "hello world"
