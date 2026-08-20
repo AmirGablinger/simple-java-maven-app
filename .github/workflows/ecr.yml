@@ -1,0 +1,65 @@
+name: AWS ECR & Local Deploy Pipeline
+
+on:
+  push:
+    # Trigger automatically on git pushes specifically targeting the AWS-Infrastructure branch
+    branches: [ "AWS-Infrastructure" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      # set version in pom.xml to match the GitHub run number
+      - name: Update pom.xml version
+        run: mvn versions:set -DnewVersion=1.0.${{ github.run_number }}
+
+      # AWS credentials using secrets stored in GitHub
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # authenticate local docker with my AWS ecr
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # build the image from multistage dockerfile and push both versioned and latest tags to ECR
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          # extract the registry url output from previous step
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: java-exe
+          IMAGE_TAG: 1.0.${{ github.run_number }} # i still wanna keep the version part
+        run: |
+          # build and tag the image locally
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          # push both tags to Amazon ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      # deploy the container on the runner
+      - name: Deploy container locally on EC2 host
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: java-exe
+        run: |
+          # stop container
+          docker stop java-app || true
+          # remove the old container
+          docker rm java-app || true
+          # run the new container from ECR in background
+          docker run -d --name java-app -p 8080:8080 $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      # verify app is running with a health check
+      - name: Verify application status
+        run: |
+          sleep 5
+          curl --fail http://localhost:8080
