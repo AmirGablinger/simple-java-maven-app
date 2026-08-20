@@ -61,5 +61,4 @@ jobs:
       # verify app is running with a health check
       - name: Verify application status
         run: |
-          sleep 5
-          curl --fail http://localhost:8080
+          docker logs java-app | grep "Hello World!"
